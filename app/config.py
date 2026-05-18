@@ -21,6 +21,6 @@ class ProductionConfig(BaseConfig):
 
 config_map = {
     "development": DevelopmentConfig,
-    "testing": TestingConfig,
+    "test": TestingConfig,
     "production": ProductionConfig,
 }
