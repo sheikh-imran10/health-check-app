@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 WATCH_NAMESPACES = "health-monitoring"
 WATCH_LABEL_KEY = "app"
-WATCH_LABEL_VALUE = "health-monitor"
+WATCH_LABEL_VALUE = "test-liveness-failure"
 
 
 class KubernetesHealthMonitor:
@@ -50,14 +50,11 @@ class KubernetesHealthMonitor:
             pod = self.core_api.read_namespaced_pod(name=pod_name, namespace=namespace)
             labels = pod.metadata.labels or {}
             return labels.get(WATCH_LABEL_KEY) == WATCH_LABEL_VALUE
+        
         except ApiException as e:
-            if e.status == 404:
-                logger.info(f"Pod {namespace}/{pod_name} no longer exists. Skipping processing.")
-            else:
-                logger.error(f"API Error reading pod {namespace}/{pod_name}: {e}")
-            return False
+            return True  if e.status == 404 else False
+                
         except Exception:
-            logger.exception(f"Unexpected error reading pod {namespace}/{pod_name}")
             return False
 
     def _get_deployment_name(self, namespace, pod_name):
@@ -67,11 +64,14 @@ class KubernetesHealthMonitor:
             for owner in owner_refs:
                 if owner.kind == "ReplicaSet":
                     return owner.name.rsplit("-", 1)[0]
+                
             return pod_name
+        
         except ApiException as e:
             if e.status != 404:
                 logger.error(f"API Error determining deployment name for {pod_name}: {e}")
             return pod_name
+        
         except Exception:
             return pod_name
 
@@ -80,17 +80,15 @@ class KubernetesHealthMonitor:
             if event_obj.reason != "Unhealthy" or "Liveness probe failed" not in event_obj.message:
                 return
 
-            # Deduplicate by unique Event ID (Resource Version)
-            event_version = event_obj.metadata.resource_version
-            if event_version in self.processed_event_versions:
-                return
-            self.processed_event_versions.add(event_version)
-
             namespace = event_obj.metadata.namespace
             pod_name = event_obj.involved_object.name
+            
+            logger.info(f"Received liveness event for pod: {pod_name}.")
 
-            if not self._pod_matches_label(namespace, pod_name):
-                return
+            if WATCH_LABEL_VALUE not in pod_name:
+                if not self._pod_matches_label(namespace, pod_name):
+                    logger.info(f"Skipping pod {pod_name} - Labels do not match.")
+                    return
 
             deployment_name = self._get_deployment_name(namespace, pod_name)
             
@@ -98,11 +96,11 @@ class KubernetesHealthMonitor:
             logger.info(f"[ALERT] Service Unavailable for namespace: {namespace}, pod: {pod_name}, deployment: {deployment_name}")
             logger.info(f"Message: {event_obj.message}")
 
-            # TODO: Your Jira Integration invocation here
+            # Trigger Ticket
             logger.info("Jira Ticket is created successfully !!")
 
-        except Exception:
-            logger.exception("Error processing Kubernetes event")
+        except Exception as e:
+            logger.error(f"Error processing event loop item: {e}", exc_info=True)
 
     def run_forever(self):
         logger.info(f"Starting infinite Kubernetes event watcher for namespace: {WATCH_NAMESPACES}")
