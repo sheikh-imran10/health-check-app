@@ -96,8 +96,8 @@ class KubernetesHealthMonitor:
             logger.info(f"[ALERT] Service Unavailable for namespace: {namespace}, pod: {pod_name}, deployment: {deployment_name}")
             logger.info(f"Message: {event_obj.message}")
 
-            # Trigger Ticket
-            logger.info("Jira Ticket is created successfully !!")
+            # TODO: create a obm event.
+            logger.info("Obm event is created successfully !!")
 
         except Exception as e:
             logger.error(f"Error processing event loop item: {e}", exc_info=True)
